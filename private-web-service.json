@@ -1,0 +1,448 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Private Web Services",
+
+  "Parameters" : {
+
+    "IdTagPrefix": {
+        "Description" : "A prefix identifier to tag things with",
+        "Type": "String",
+        "MinLength": "1",
+        "MaxLength": "255"
+    },
+
+   "Environment": {
+      "Description" : "The environment",
+      "Type": "String"
+    },
+
+    "CIDeploymentUser": {
+      "Description" : "CI deployment user, a user from IAM with SSH access which is used by the CI deployment scripts",
+      "Type": "String",
+      "MinLength": "4",
+      "MaxLength": "32",
+      "AllowedPattern" : "[a-z0-9\\-\\_]+",
+      "ConstraintDescription" : "must be a valid CI deployment username."
+    },
+
+    "VpcId" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "VpcId of your existing Virtual Private Cloud (VPC)"
+    },
+
+    "SubnetIds" : {
+      "Type" : "CommaDelimitedList",
+      "Description" : "The list of SubnetIds within the VPC to deploy the web services into"
+    },
+
+    "TomcatKeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the Tomcat REST instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+ "DeploymentS3BucketAccessKey": {
+            "Description": "Authentication key for S3 bucket access to the Puppet deployment scripts",
+            "Type": "String"
+    },
+    "DeploymentS3BucketName": {
+            "Description": "S3 bucket name where the Puppet deployment scripts are hosted",
+            "Type": "String"
+    },
+    "DeploymentS3BucketSecretKey": {
+            "NoEcho": "true",
+            "Description": "Secret key for S3 bucket access to the Puppet deployment scripts",
+            "Type": "String"
+    },
+
+    "ContentLocation": {
+            "ConstraintDescription": "a valid S3 URL",
+            "Description": "Location of package (Zip, GZIP or Git repository URL) that includes the Puppet deployment",
+            "Type": "String"
+    },
+
+    "MaxPostSize": {
+            "Default": "1048576",
+            "Description": "The maximum POST size in bytes for content",
+            "MinValue": "262144",
+            "Type": "Number"
+    },
+
+    "TomcatHttpPort": {
+        "Description": "Tomcat HTTP traffic port",
+        "Type": "Number",
+        "Default": 8080,
+        "ConstraintDescription": "Must be in the range [1000-9999]",
+        "MinValue": 1000,
+        "MaxValue": 9999
+    },
+
+    "TomcatHttpsPort": {
+        "Description": "Tomcat HTTPS traffic port",
+        "Type": "Number",
+        "Default": 8443,
+        "ConstraintDescription": "Must be in the range [1000-9999]",
+        "MinValue": 1000,
+        "MaxValue": 9999
+    },
+
+    "TomcatDebugPort": {
+        "Description": "Tomcat port to which a Java debugger can attach to",
+        "Type": "Number",
+        "Default": 8999,
+        "ConstraintDescription": "Must be in the range [1000-9999]",
+        "MinValue": 1000,
+        "MaxValue": 9999
+    },
+
+    "TomcatMinInstances": {
+        "Description": "Minimum number of Tomcat instances to create",
+        "Type": "Number",
+        "Default": 2,
+        "ConstraintDescription": "Must be in the range [0-20]",
+        "MinValue": 1,
+        "MaxValue": 20
+    },
+
+    "TomcatMaxInstances": {
+        "Description": "Maximum number of Tomcat instances to create",
+        "Type": "Number",
+        "Default": 2,
+        "ConstraintDescription": "Must be in the range [0-20]",
+        "MinValue": 1,
+        "MaxValue": 20
+    },
+ "TomcatEbsDiskSizeGb": {
+        "Description": "Disk size of the Tomcat EBS volume",
+        "Type": "Number",
+        "Default": 10,
+        "ConstraintDescription": "Must be in the range [10-500]",
+        "MinValue": 10,
+        "MaxValue": 500
+    },
+
+    "TomcatRESTASGHealthCheckGracePeriod": {
+        "Description": "The time in seconds after a new Tomcat REST instance comes into service that Auto Scaling starts checking its health",
+        "Type": "Number",
+        "Default": "480",
+        "ConstraintDescription": "Must be in the range [30-1800]",
+        "MinValue": 60,
+        "MaxValue": 1800
+    },
+
+    "TomcatRESTSecurityGroupId": {
+      "Description" : "Tomcat REST services security group ID",
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "ConstraintDescription" : "must be a valid security group identifier."
+    },
+
+   "TomcatRESTALBSecurityGroupId": {
+      "Description" : "Tomcat REST Application loadbalancer security group ID",
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "ConstraintDescription" : "must be a valid security group identifier."
+    },
+
+    "CacheSecurityGroupId": {
+      "Description" : "Cache cluster security group ID",
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "ConstraintDescription" : "must be a valid security group identifier."
+    },
+
+    "CacheIAMAccessKey": {
+      "Description": "Cache cluster discovery IAM access key",
+      "Type": "String"
+    },
+
+    "CacheIAMSecretKey": {
+      "Description": "Cache cluster discovery IAM access key",
+      "Type": "String"
+    },
+ "DBEndpoint": {
+      "Description" : "The endpoint for the database service",
+      "Type": "String",
+      "AllowedPattern" : "[a-z][a-z0-9\\.\\-]*",
+      "ConstraintDescription" : "must begin with a letter and contain alphanumeric characters, dots and dashes."
+    },
+
+    "DBPort": {
+      "Default": "3306",
+      "Description" : "Port on which the database will be accessed from",
+      "Type": "Number",
+      "MinValue": "1000",
+      "MaxValue": "65535",
+      "ConstraintDescription" : "must be between 1000 to 65535."
+    },
+
+    "DBPassword": {
+      "NoEcho": "true",
+      "Description" : "The database admin account password",
+      "Type": "String",
+      "MinLength": "8",
+      "MaxLength": "41",
+      "AllowedPattern" : "[a-zA-Z0-9]*",
+      "ConstraintDescription" : "must contain only alphanumeric characters."
+    },
+
+    "DatabaseSchemaName": {
+      "Default":  "fund_data",
+      "Description" : "The name of a database schema to create for this application",
+      "Type": "String",
+      "MinLength": "8",
+      "MaxLength": "41",
+      "AllowedPattern" : "[a-zA-Z0-9\\_]*",
+      "ConstraintDescription" : "must contain only alphanumeric characters and underscores."
+    },
+
+    "DatabaseSchemaPassword": {
+      "NoEcho": "true",
+      "Description" : "The database schema password",
+      "Type": "String",
+      "MinLength": "8",
+      "MaxLength": "41",
+      "AllowedPattern" : "[a-zA-Z0-9]*",
+      "ConstraintDescription" : "must contain only alphanumeric characters."
+    },
+ "DatabaseIsReadOnly": {
+      "Description" : "If the database is a read-only database",
+      "Type": "String",
+      "AllowedValues": ["true", "false"],
+      "Default": "false"
+    },
+
+    "MultiTenantDatabaseSchemas": {
+      "Description" : "List of multi-tenant schemas",
+      "Type": "String",
+      "MinLength": "10"
+    },
+
+    "TomcatImageId": {
+        "Description": "The image id for the Tomcat REST instances",
+        "Type": "AWS::EC2::Image::Id"
+    },
+
+    "TomcatInstanceType" : {
+      "Description": "The image id for the Tomcat REST instances",
+      "Type" : "String",
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+
+    "TomcatRESTHTTPALBTargetGroupArn": {
+      "Description": "ARN of the Tomcat REST HTTP target group in the ALB",
+      "Type" : "String"
+    },
+
+    "TomcatRESTHTTPSALBTargetGroupArn": {
+      "Description": "ARN of the Tomcat REST HTTPS target group in the ALB",
+      "Type" : "String"
+    },
+
+    "FTPEfsMounted": {
+      "Description" : "If the EFS should be mounted or not",
+      "Type": "String",
+      "AllowedValues": ["true", "false"],
+      "Default": "false"
+    },
+
+    "FTPEfsIpAddress": {
+      "Type" : "String",
+      "Description": "IP Address of the EFS mount"
+    },
+ "FTPEfsIpAddress": {
+      "Type" : "String",
+      "Description": "IP Address of the EFS mount"
+    },
+
+    "LogstashServer": {
+        "Description": "An IP address for the Logstash server",
+        "Type": "String"
+    }
+
+  },
+
+  "Conditions" : {
+    "IsDevEnvironment" : {"Fn::Equals" : [{"Ref" : "Environment"}, "dev"]},
+    "IsProdEnvironment": {"Fn::Equals" : [{"Ref" : "Environment"}, "prod"]}
+  },
+
+  "Resources" : {
+
+    "TomcatRESTASGLaunchConfig" : {
+        "Type" : "AWS::AutoScaling::LaunchConfiguration",
+        "Metadata": {
+            "AWS::CloudFormation::Authentication": {
+                "S3AccessCreds": {
+                    "accessKeyId": { "Ref": "DeploymentS3BucketAccessKey" },
+                    "buckets": [{ "Ref": "DeploymentS3BucketName" }],
+                    "secretKey": { "Ref": "DeploymentS3BucketSecretKey" },
+                    "type": "S3"
+                }
+            },
+            "AWS::CloudFormation::Init": {
+                "config": {
+                    "commands": {
+                        "1-puppet-pre": {
+                            "command": "/bin/sed -i '2 i\\parser=future' /etc/puppet/puppet.conf"
+                        },
+                        "2-puppet": {
+                            "command": "/usr/bin/puppet apply -d -v /etc/puppet/manifests/site.pp -l /var/log/puppet/cloudformation-bootstrap.log"
+                        }
+                    },
+                    "sources": { "/etc/puppet": { "Ref": "ContentLocation" } }
+                }
+            },
+ "Puppet": {
+                "roles": [{ "Ref": "Environment" }],
+                "profile": "rest-service-tier",
+                "proxy_port":  "80",
+                "proxy_https_port":  "443",
+                "tomcat_http_port":  [{ "Ref": "TomcatHttpPort" }],
+                "tomcat_https_port":  [{ "Ref": "TomcatHttpsPort" }],
+                "tomcat_debug_port":  [{ "Ref": "TomcatDebugPort" }],
+                "db_endpoint":  [{ "Ref": "DBEndpoint" }],
+                "db_port":  [{ "Ref": "DBPort" }],
+                "db_password": [{"Ref": "DBPassword"}],
+                "db_schema_name":  [{"Ref": "DatabaseSchemaName"}],
+                "db_schema_password":  [{"Ref": "DatabaseSchemaPassword"}],
+                "db_is_readonly": [{"Ref": "DatabaseIsReadOnly"}],
+                "schemas_definitions": [{"Ref": "MultiTenantDatabaseSchemas"}],
+                "nexus_host": [ "@nexus.host@" ],
+                "nexus_snapshot_repository": [ "@nexus.snapshotRepositoryName@" ],
+                "nexus_release_repository": [ "@nexus.releaseRepositoryName@" ],
+                "nexus_release_version": [ "@project.version@" ],
+                "data_device": [ "/dev/xvdh" ],
+                "aws_instance_type": [ { "Ref": "TomcatInstanceType" } ],
+                "max_post_size": [ { "Ref": "MaxPostSize" } ],
+                "aws_region": [ { "Ref" : "AWS::Region" } ],
+                "aws_access_key": [ { "Ref": "DeploymentS3BucketAccessKey" } ],
+                "aws_secret_key": [ { "Ref": "DeploymentS3BucketSecretKey" } ],
+                "ftp_efs_mounted": [ { "Ref": "FTPEfsMounted" } ],
+                "ftp_efs_ip_address": [ { "Ref": "FTPEfsIpAddress" } ],
+                "ci_deployment_user": [{ "Ref": "CIDeploymentUser" }],
+                "logstash_server": [{ "Ref": "LogstashServer" }],
+                "cache_aws_security_group" : [{ "Ref": "CacheSecurityGroupId" }],
+                "cache_aws_region" : [ { "Ref" : "AWS::Region" } ],
+                "cache_aws_access_key" : [{ "Ref": "CacheIAMAccessKey" }],
+                "cache_aws_secret_key" : [{ "Ref": "CacheIAMSecretKey" }],
+                "cache_port_from": 5201,
+                "cache_port_to": 5208
+            }
+        },
+        "Properties" : {
+            "ImageId": { "Ref": "TomcatImageId" },
+            "InstanceType": { "Ref": "TomcatInstanceType" },
+            "SecurityGroups": [{ "Ref": "TomcatRESTSecurityGroupId" }],
+            "BlockDeviceMappings" : [ {
+                "DeviceName" : "/dev/sdh",
+                    "Ebs" : {"VolumeSize" : { "Ref": "TomcatEbsDiskSizeGb" }, "VolumeType" : "gp2", "DeleteOnTermination" : "true"}
+            } ],
+ "KeyName": { "Ref": "TomcatKeyName" },
+            "UserData": {
+                "Fn::Base64": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "#!/bin/bash\n",
+                            "/usr/bin/apt-get update\n",
+                            "# Install puppet and python-setuptools as we will use easy_install to install the AWS CFN bootstrap scripts\n",
+                            "/usr/bin/apt-get --yes install python-setuptools puppet-common\n",
+                            "mkdir aws-cfn-bootstrap-latest\n",
+                            "curl --retry 5 https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz | tar xz -C aws-cfn-bootstrap-latest --strip-components 1\n",
+                            "easy_install aws-cfn-bootstrap-latest\n",
+                            "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
+                            "pc=/etc/puppet/puppet.conf; if [ `grep -c 'parser=future' $pc` != 1 ]; then sed -i 's/\\[main\\]/\\[main\\]\\nparser\\=future/' $pc; fi\n",
+                            "for module in @puppet.bootstrap-modules@; do ",
+                            "echo \"Bootstrap install of Puppet module $module...\"\n",
+                            "/usr/bin/puppet module install --force $module; ",
+                            "echo \"Bootstrap install of Puppet module $module completed OK\"\n",
+                            "done\n",
+                            "# Call cfn-init, which invokes the actions in AWS::CloudFormation::Init\n",
+                            "echo \"Invoking cfn-init signal...\"\n",
+                            "/usr/local/bin/cfn-init --region ",
+                            { "Ref": "AWS::Region" },
+                            " -s ",
+                            { "Ref": "AWS::StackId" },
+                            " -r TomcatRESTASGLaunchConfig \n",
+                            "echo \"Invoking cfn-init signal completed OK\"\n",
+                            "\n"
+                        ]
+                    ]
+                }
+            }
+       }
+    },
+ "TomcatRESTASG" : {
+       "Type" : "AWS::AutoScaling::AutoScalingGroup",
+       "Properties" : {
+            "VPCZoneIdentifier": {"Ref": "SubnetIds"},
+            "MetricsCollection": [{
+                "Granularity" : "1Minute"
+            }],
+            "LaunchConfigurationName" : { "Ref" : "TomcatRESTASGLaunchConfig" },
+            "TerminationPolicies": ["OldestInstance", "OldestLaunchConfiguration"],
+            "MinSize" : { "Ref" : "TomcatMinInstances" },
+            "MaxSize" : { "Ref" : "TomcatMaxInstances" },
+            "Tags": [{ "Key": "Name", "Value": {"Fn::Join": ["-", ["Tomcat REST", {"Ref": "IdTagPrefix"}]]}, "PropagateAtLaunch" : "true" }, { "Key": "Environment", "Value": { "Ref" : "Environment" }, "PropagateAtLaunch" : "true" }, { "Key": "Tier", "Value": "Tomcat" , "PropagateAtLaunch" : "true" }],
+            "HealthCheckGracePeriod": { "Ref" : "TomcatRESTASGHealthCheckGracePeriod" },
+            "HealthCheckType": "ELB",
+            "TargetGroupARNs": [ { "Ref" : "TomcatRESTHTTPALBTargetGroupArn"}, { "Ref" : "TomcatRESTHTTPSALBTargetGroupArn"} ]
+       }
+    },
+
+    "ProdScheduledActionScaleUp": {
+      "Type": "AWS::AutoScaling::ScheduledAction",
+      "Condition" : "IsProdEnvironment",
+      "Properties": {
+        "AutoScalingGroupName": {
+          "Ref": "TomcatRESTASG"
+        },
+        "MaxSize": { "Ref" : "TomcatMaxInstances" },
+        "MinSize": { "Ref" : "TomcatMaxInstances" },
+        "Recurrence": "0 10 * * 1-5"
+      }
+    },
+
+    "ProdScheduledActionScaleDown": {
+      "Type": "AWS::AutoScaling::ScheduledAction",
+      "Condition" : "IsProdEnvironment",
+      "Properties": {
+        "AutoScalingGroupName": {
+          "Ref": "TomcatRESTASG"
+        },
+        "MaxSize": { "Ref" : "TomcatMinInstances" },
+        "MinSize": { "Ref" : "TomcatMinInstances" },
+        "Recurrence": "0 23 * * *"
+      }
+    },
+ "DevScheduledActionScaleUp": {
+      "Type": "AWS::AutoScaling::ScheduledAction",
+      "Condition" : "IsDevEnvironment",
+      "Properties": {
+        "AutoScalingGroupName": {
+          "Ref": "TomcatRESTASG"
+        },
+        "MaxSize": { "Ref" : "TomcatMaxInstances" },
+        "MinSize": { "Ref" : "TomcatMaxInstances" },
+        "Recurrence": "0 7 * * 1-5"
+      }
+    },
+
+    "DevScheduledActionScaleDown": {
+      "Type": "AWS::AutoScaling::ScheduledAction",
+      "Condition" : "IsDevEnvironment",
+      "Properties": {
+        "AutoScalingGroupName": {
+          "Ref": "TomcatRESTASG"
+        },
+        "MaxSize": 0,
+        "MinSize": 0,
+        "Recurrence": "0 23 * * *"
+      }
+    }
+
+  },
+
+  "Outputs" : {
+  }
+
+}
+

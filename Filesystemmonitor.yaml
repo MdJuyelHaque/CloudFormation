@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  FileSystemResource:
+    Type: String
+    Description: 'Filesystem Id required'
+  SecurityGroupIds:
+    Type: CommaDelimitedList
+    Description: "Specify an security group ID"
+  SubnetIDs:
+    Type: CommaDelimitedList
+    Description: "The list of SubnetIDs in your VPC"
+  EnvironmentName:
+    Type: String
+    Description: "Specify Environment"
+    AllowedValues:
+      - dev
+      - qa
+      - stage
+      - prod
+Description: Lambda function with cfn-response.
+Resources:
+  AccessPointResource:
+    Type: 'AWS::EFS::AccessPoint'
+    Properties:
+     FileSystemId: !Ref FileSystemResource
+     PosixUser:
+      Uid: "0"
+      Gid: "0"
+      SecondaryGids:
+       - '0'
+     RootDirectory:
+      CreationInfo:
+       OwnerGid: "0"
+       OwnerUid: "0"
+       Permissions: "755"
+      Path: "/"
+ Efsmonitor:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: Efsmonitor
+      Description: Invoke a function during stack creation
+      Runtime:  ruby2.7
+      Timeout: 3
+      MemorySize: 128
+      Role: !GetAtt RoleLambda.Arn
+      VpcConfig:
+        SecurityGroupIds: !Ref SecurityGroupIds
+        SubnetIds: !Ref SubnetIDs
+      TracingConfig:
+        Mode: PassThrough
+      Handler: Efsmonitor.lambda_handler                           # add handler and code here
+      Code:
+        S3Bucket: !Sub "${AWS::Region}-lambda-zip"
+        S3Key: "Efsfunction.zip"
+      Environment:
+        Variables:
+            "ENV": !Ref EnvironmentName
+            "SLACKCHANNEL": "#channelname"
+  asyncconfig:
+    Type: AWS::Lambda::EventInvokeConfig
+    Properties:
+      DestinationConfig:
+        OnSuccess:
+          Destination:
+             Fn::GetAtt:
+               - "Slacknotification"
+               - "Arn"
+      FunctionName: !Ref Efsmonitor
+      MaximumEventAgeInSeconds: 60
+      MaximumRetryAttempts: 1
+      Qualifier: $LATEST
+ ScheduledRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "ScheduledRule"
+      ScheduleExpression: "rate(5 minutes)"
+      Targets:
+        -
+          Arn:
+            Fn::GetAtt:
+              - "Efsmonitor"
+              - "Arn"
+          Id: "Invokeevery5mins"
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: "Efsmonitor"
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn:
+        Fn::GetAtt:
+          - "ScheduledRule"
+          - "Arn"
+ Slacknotification:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: Slacknotifiction
+      Description: Invoke a function during stack creation
+      Runtime:  ruby2.7
+      Timeout: 3
+      MemorySize: 128
+      Role: !GetAtt RoleLambda.Arn
+      TracingConfig:
+        Mode: PassThrough
+      Handler: slacknotification.lambda_handler                           # add handler and code here
+      Code:
+        S3Bucket: !Sub "${AWS::Region}-lambda-zip"
+        S3Key: "Slackfunction.zip"
+      Environment:
+        Variables:
+            "ENV": !Ref EnvironmentName
+            "SLACKCHANNEL": "#bot-testing"
+
+  RoleLambda:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName:
+       !Sub "FilesystemMonitor-role-${AWS::Region}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+            Effect: Allow
+            Principal:
+              Service:
+              - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+Policies:
+        - PolicyName:
+           !Sub "${AWS::Region}-AWSlambdavpcaccess"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:AttachNetworkInterface'
+                Resource: '*'
+        - PolicyName:
+            !Sub "${AWS::Region}-AWSlambdatraceraccess"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'xray:PutTraceSegments'
+                  - 'xray:PutTelemetryRecords'
+                Resource: '*'
+        - PolicyName:
+            !Sub "${AWS::Region}-AWSlambdaInvokefunction"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                    'lambda:InvokeFunction'
+                Resource: "*"
+
+ - PolicyName:
+            !Sub "${AWS::Region}-AWSlambdabasicexecution"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogStream'
+                  - 'logs:PutLogEvents'
+                  - 'events:PutEvents'
+                Resource: '*'
+        - PolicyName:
+            !Sub "${AWS::Region}-AWSlambdabasicexecutionrole"
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  'logs:CreateLogGroup'
+                Resource:
+                  !Sub "arn:aws:logs:${AWS::Region}:AccountId:*"
+
+

@@ -1,0 +1,450 @@
+{
+  "AWSTemplateFormatVersion" : "2010-09-09",
+
+  "Description" : "Public Web Tier",
+
+  "Parameters" : {
+
+    "IdTagPrefix": {
+        "Description" : "A prefix identifier to tag things with",
+        "Type": "String",
+        "MinLength": "1",
+        "MaxLength": "255"
+    },
+
+   "Environment": {
+      "Description" : "The environment",
+      "Type": "String"
+    },
+
+    "CIDeploymentUser": {
+      "Description" : "CI deployment user, a user from IAM with SSH access which is used by the CI deployment scripts",
+      "Type": "String",
+      "MinLength": "4",
+      "MaxLength": "32",
+      "AllowedPattern" : "[a-z0-9\\-\\_]+",
+      "ConstraintDescription" : "must be a valid CI deployment username."
+    },
+
+    "ClassB": {
+        "Description": "Class B of VPC (10.XXX.0.0/16)",
+        "Type": "Number",
+        "ConstraintDescription": "Must be in the range [0-255]",
+        "MinValue": 0,
+        "MaxValue": 255
+    },
+
+    "VpcId" : {
+      "Type" : "AWS::EC2::VPC::Id",
+      "Description" : "VpcId of your existing Virtual Private Cloud (VPC)"
+    },
+
+    "PublicSubnetIds" : {
+      "Type" : "CommaDelimitedList",
+      "Description" : "The list of Public SubnetIds within the VPC"
+    },
+ "ServicePublicDNSNames": {
+      "Default": "funddata.maarkstaging.com",
+      "Description" : "A comma-separated list of DNS names for the service",
+      "Type": "String",
+      "MinLength": "8",
+      "MaxLength": "1024",
+    },
+
+    "ELBSSLCertName" : {
+        "Description"           : "SSL Certificate Name, e.g. arn:aws:iam::496396001060:server-certificate/ssl-dev-cert",
+        "Type"                  : "String",
+        "MinLength"             : "32",
+        "MaxLength"             : "128",
+        "AllowedPattern"        : "[-_ .:/a-zA-Z0-9]*",
+        "ConstraintDescription" : "can contain only alphanumeric characters, spaces, dashes and underscores."
+    },
+
+    "NGINXKeyName": {
+      "Description" : "Name of an existing EC2 KeyPair to enable SSH access to the NGINX instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription" : "must be the name of an existing EC2 KeyPair."
+    },
+
+    "DeploymentS3BucketAccessKey": {
+            "Description": "Authentication key for S3 bucket access to the Puppet deployment scripts",
+            "Type": "String"
+    },
+    "DeploymentS3BucketName": {
+            "Description": "S3 bucket name where the Puppet deployment scripts are hosted",
+            "Type": "String"
+    },
+    "DeploymentS3BucketSecretKey": {
+            "NoEcho": "true",
+            "Description": "Secret key for S3 bucket access to the Puppet deployment scripts",
+            "Type": "String"
+    },
+
+    "ContentLocation": {
+            "ConstraintDescription": "a valid S3 URL",
+            "Description": "Location of package (Zip, GZIP or Git repository URL) that includes the Puppet deployment",
+            "Type": "String"
+    },
+ "NGINXMinInstances": {
+        "Description": "Minimum number of NGINX instances to create",
+        "Type": "Number",
+        "Default": 2,
+        "ConstraintDescription": "Must be in the range [2-20]",
+        "MinValue": 1,
+        "MaxValue": 20
+    },
+
+    "NGINXMaxInstances": {
+        "Description": "Maximum number of NGINX instances to create",
+        "Type": "Number",
+        "Default": 2,
+        "ConstraintDescription": "Must be in the range [2-20]",
+        "MinValue": 1,
+        "MaxValue": 20
+    },
+
+    "NGINXEbsDiskSizeGb": {
+        "Description": "Maximum number of NGINX instances to create",
+        "Type": "Number",
+        "Default": 50,
+        "ConstraintDescription": "Must be in the range [1-1024]",
+        "MinValue": 1,
+        "MaxValue": 1024
+    },
+
+   "TomcatRESTApplicationLoadBalancerDNS": {
+      "Description" : "The Tomcat REST application loadbalancer DNS name for routing requests to the private web tier",
+      "Type": "String",
+      "MinLength": "6",
+      "MaxLength": "256",
+      "AllowedPattern" : "[a-zA-Z][a-zA-Z0-9\\.\\-]*",
+      "ConstraintDescription" : "must begin with a letter and contain alphanumeric characters, dots and dashes."
+    },
+
+    "TomcatHttpPort": {
+        "Description": "Tomcat HTTP traffic port",
+        "Type": "Number",
+        "Default": 8080,
+        "ConstraintDescription": "Must be in the range [1000-9999]",
+        "MinValue": 1000,
+        "MaxValue": 9999
+    },
+ "TomcatHttpsPort": {
+        "Description": "Tomcat HTTPS traffic port",
+        "Type": "Number",
+        "Default": 8443,
+        "ConstraintDescription": "Must be in the range [1000-9999]",
+        "MinValue": 1000,
+        "MaxValue": 9999
+    },
+
+    "NGINXELBHealthCheckGracePeriod": {
+        "Description": "The time in seconds after a new NGINX instance comes into service that Auto Scaling starts checking its health",
+        "Type": "Number",
+        "Default": "480",
+        "ConstraintDescription": "Must be in the range [30-1800]",
+        "MinValue": 60,
+        "MaxValue": 1800
+    },
+
+   "NGINXALBSecurityGroupId": {
+      "Description" : "NGINX Application loadbalancer security group ID",
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "ConstraintDescription" : "must be a valid security group identifier."
+    },
+
+   "NGINXSecurityGroupId": {
+      "Description" : "NGINX security group ID",
+      "Type": "AWS::EC2::SecurityGroup::Id",
+      "ConstraintDescription" : "must be a valid security group identifier."
+    },
+
+    "NGINXImageId": {
+        "Description": "The image id for the NGINX instances",
+        "Type": "AWS::EC2::Image::Id"
+    },
+
+    "NGINXInstanceType" : {
+      "Description": "The image id for the NGINX instances",
+      "Type" : "String",
+      "ConstraintDescription" : "must be a valid EC2 instance type."
+    },
+
+    "LogstashServer": {
+        "Description": "An IP address for the Logstash server",
+        "Type": "String"
+    },
+"EnvironmentSecretsAccessKey": {
+      "Description": "Authentication key to access AWS secrets manager for this environment",
+      "Type": "String"
+    },
+
+    "EnvironmentSecretsSecretKey": {
+      "NoEcho": "true",
+      "Description": "Secret key to access AWS secrets manager for this environment",
+      "Type": "String"
+    },
+
+    "IsReadReplicaRegion": {
+      "Description" : "If this region is a read replica or not. If it is then ReadReplicaWriteableRequestRoute must be set.",
+      "Type": "String",
+      "AllowedValues": ["true", "false"],
+      "Default": "false"
+    },
+
+    "ReadReplicaWriteableRequestRoute": {
+      "Description" : "If DBIsReadReplica is set then this must be set! The DNS name of the NGINX ALB in the master stack which routes writeable requests from the read replica (if DBIsReadReplica is set) to the master stack which can write to the database.",
+      "Type": "String"
+    }
+
+  },
+
+  "Conditions" : {
+    "IsDevEnvironment" : {"Fn::Equals" : [{"Ref" : "Environment"}, "dev"]},
+    "IsProdEnvironment": {"Fn::Equals" : [{"Ref" : "Environment"}, "prod"]}
+  },
+
+  "Resources" : {
+
+        "NGINXHTTPALBListener" : {
+          "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+          "Properties" : {
+            "DefaultActions" : [{
+              "Type" : "forward",
+              "TargetGroupArn" : { "Ref" : "NGINXHTTPALBTargetGroup" }
+            }],
+            "LoadBalancerArn" : { "Ref" : "NGINXApplicationLoadBalancer" },
+            "Port" : 80,
+            "Protocol" : "HTTP"
+          }
+        },
+ "NGINXHTTPSALBListener" : {
+          "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+          "Properties" : {
+            "DefaultActions" : [{
+              "Type" : "forward",
+              "TargetGroupArn" : { "Ref" : "NGINXHTTPSALBTargetGroup" }
+            }],
+            "LoadBalancerArn" : { "Ref" : "NGINXApplicationLoadBalancer" },
+            "Port" : 443,
+            "Protocol" : "HTTPS",
+            "Certificates": [{ "CertificateArn": {"Ref": "ELBSSLCertName"}}],
+            "SslPolicy": "ELBSecurityPolicy-TLS-1-2-Ext-2018-06"
+          }
+        },
+
+        "NGINXApplicationLoadBalancer" : {
+          "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+          "Properties" : {
+            "Scheme" : "internet-facing",
+            "Subnets": {"Ref": "PublicSubnetIds"},
+            "SecurityGroups" : [{"Ref": "NGINXALBSecurityGroupId"}]
+          }
+        },
+
+        "NGINXHTTPALBTargetGroup" : {
+          "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+          "Properties" : {
+            "HealthCheckIntervalSeconds" : 30,
+            "UnhealthyThresholdCount" : 3,
+            "HealthyThresholdCount": 2,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthCheckPath" : "/healthcheck.html",
+            "Port" : 80,
+            "Protocol" : "HTTP",
+            "TargetGroupAttributes": [{"Key": "deregistration_delay.timeout_seconds", "Value": "60"}, {"Key": "slow_start.duration_seconds", "Value": "60"}],
+            "VpcId" : { "Ref": "VpcId" }
+          }
+        },
+  "NGINXHTTPSALBTargetGroup" : {
+          "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+          "Properties" : {
+            "HealthCheckIntervalSeconds" : 30,
+            "UnhealthyThresholdCount" : 3,
+            "HealthyThresholdCount": 2,
+            "HealthCheckTimeoutSeconds": 5,
+            "HealthCheckPath" : "/healthcheck.html",
+            "Port" : 443,
+            "Protocol" : "HTTP",
+            "TargetGroupAttributes": [{"Key": "deregistration_delay.timeout_seconds", "Value": "60"}, {"Key": "slow_start.duration_seconds", "Value": "60"}],
+            "VpcId" : { "Ref": "VpcId" }
+          }
+        },
+
+        "NGINXASGLaunchConfig" : {
+            "Type" : "AWS::AutoScaling::LaunchConfiguration",
+            "Metadata": {
+                "AWS::CloudFormation::Authentication": {
+                    "S3AccessCreds": {
+                        "accessKeyId": { "Ref": "DeploymentS3BucketAccessKey" },
+                        "buckets": [{ "Ref": "DeploymentS3BucketName" }],
+                        "secretKey": { "Ref": "DeploymentS3BucketSecretKey" },
+                        "type": "S3"
+                    }
+                },
+                "AWS::CloudFormation::Init": {
+                    "config": {
+                        "commands": {
+                            "1-puppet-pre": {
+                                "command": "/bin/sed -i '2 i\\parser=future' /etc/puppet/puppet.conf"
+                            },
+                            "2-puppet": {
+                                "command": "/usr/bin/puppet apply -d -v /etc/puppet/manifests/site.pp -l /var/log/puppet/cloudformation-bootstrap.log"
+                            }
+                        },
+                        "sources": { "/etc/puppet": { "Ref": "ContentLocation" } }
+                    }
+                },
+"Puppet": {
+                    "roles": [{ "Ref": "Environment" } ],
+                    "profile": [ "web-tier" ],
+                    "proxy_hosts": [{ "Ref": "ServicePublicDNSNames" }],
+                    "proxy_port":  "80",
+                    "proxy_https_port":  "443",
+                    "tomcat_server_alb": {"Ref": "TomcatRESTApplicationLoadBalancerDNS"},
+                    "tomcat_http_port":  {"Ref": "TomcatHttpPort"},
+                    "tomcat_https_port":  {"Ref": "TomcatHttpsPort"},
+                    "nexus_host": [ "@nexus.host@" ],
+                    "nexus_snapshot_repository": [ "@nexus.snapshotRepositoryName@" ],
+                    "nexus_release_repository": [ "@nexus.releaseRepositoryName@" ],
+                    "nexus_release_version": [ "@project.version@" ],
+                    "data_device": [ "/dev/xvdh" ],
+                    "aws_instance_type": [ { "Ref": "NGINXInstanceType" } ],
+                    "max_post_size": [ { "Ref": "MaxPostSize" } ],
+                    "healthcheck_port": "80",
+                    "healthcheck_domain": [ {"Fn::GetAtt" : [ "NGINXApplicationLoadBalancer" , "DNSName" ]} ],
+                    "aws_region": [ { "Ref" : "AWS::Region" } ],
+                    "aws_access_key": [ { "Ref": "DeploymentS3BucketAccessKey" } ],
+                    "aws_secret_key": [ { "Ref": "DeploymentS3BucketSecretKey" } ],
+                    "ci_deployment_user": [{ "Ref": "CIDeploymentUser" }],
+                    "logstash_server": [{ "Ref": "LogstashServer" }],
+                    "vpc_classb": [{ "Ref": "ClassB" }],
+                    "secrets_aws_access_key": [ { "Ref": "EnvironmentSecretsAccessKey" } ],
+                    "secrets_aws_secret_key": [ { "Ref": "EnvironmentSecretsSecretKey" } ],
+                    "is_read_replica_region": [ { "Ref": "IsReadReplicaRegion" } ],
+                    "read_replica_writeable_request_route": [ { "Ref": "ReadReplicaWriteableRequestRoute" } ]
+                }
+            },
+            "Properties" : {
+                "ImageId": {"Ref": "NGINXImageId"},
+                "InstanceType": { "Ref": "NGINXInstanceType" },
+                "SecurityGroups": [{ "Ref": "NGINXSecurityGroupId" }],
+                "BlockDeviceMappings" : [ {
+                    "DeviceName" : "/dev/sdh",
+                        "Ebs" : {"VolumeSize" : { "Ref": "NGINXEbsDiskSizeGb" }, "VolumeType" : "gp2", "DeleteOnTermination" : "true"}
+                } ],
+                "KeyName": { "Ref": "NGINXKeyName" },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": [
+                            "",
+  [
+                                "#!/bin/bash\n",
+                                "/usr/bin/apt-get update\n",
+                                "# Install puppet and python-setuptools as we will use easy_install to install the AWS CFN bootstrap scripts\n",
+                                "/usr/bin/apt-get --yes install python-setuptools puppet-common\n",
+                                "mkdir aws-cfn-bootstrap-latest\n",
+                                "curl --retry 5 https://s3.amazonaws.com/cloudformation-examples/aws-cfn-bootstrap-latest.tar.gz | tar xz -C aws-cfn-bootstrap-latest --strip-components 1\n",
+                                "easy_install aws-cfn-bootstrap-latest\n",
+                                "ln -s /root/aws-cfn-bootstrap-latest/init/ubuntu/cfn-hup /etc/init.d/cfn-hup\n",
+                                "pc=/etc/puppet/puppet.conf; if [ `grep -c 'parser=future' $pc` != 1 ]; then sed -i 's/\\[main\\]/\\[main\\]\\nparser\\=future/' $pc; fi\n",
+                                "for module in @puppet.bootstrap-modules@; do ",
+                                "echo \"Bootstrap install of Puppet module $module...\"\n",
+                                "/usr/bin/puppet module install --force $module; ",
+                                "echo \"Bootstrap install of Puppet module $module completed OK\"\n",
+                                "done\n",
+                                "# Call cfn-init, which invokes the actions in AWS::CloudFormation::Init\n",
+                                "echo \"Invoking cfn-init signal...\"\n",
+                                "/usr/local/bin/cfn-init --region ",
+                                { "Ref": "AWS::Region" },
+                                " -s ",
+                                { "Ref": "AWS::StackId" },
+                                " -r NGINXASGLaunchConfig \n",
+                                "echo \"Invoking cfn-init signal completed OK\"\n",
+                                "\n"
+                            ]
+                        ]
+                    }
+                }
+           }
+        },
+ "NGINXInstanceASG" : {
+           "Type" : "AWS::AutoScaling::AutoScalingGroup",
+           "Properties" : {
+                "VPCZoneIdentifier": {"Ref": "PublicSubnetIds"},
+                "MetricsCollection": [{
+                    "Granularity" : "1Minute"
+                }],
+                "LaunchConfigurationName" : { "Ref" : "NGINXASGLaunchConfig" },
+                "TerminationPolicies": ["OldestInstance", "OldestLaunchConfiguration"],
+                "MinSize" : { "Ref" : "NGINXMinInstances" },
+                "MaxSize" : { "Ref" : "NGINXMaxInstances" },
+                "Tags": [{ "Key": "Name", "Value": {"Fn::Join": ["-", ["NGINX Public Webserver", {"Ref": "IdTagPrefix"}]]}, "PropagateAtLaunch" : "true" }, { "Key": "Environment", "Value": { "Ref" : "Environment" }, "PropagateAtLaunch" : "true" }, { "Key": "Tier", "Value": "NGINX" , "PropagateAtLaunch" : "true" }],
+                "HealthCheckGracePeriod": { "Ref" : "NGINXELBHealthCheckGracePeriod" },
+                "HealthCheckType": "ELB",
+                "TargetGroupARNs": [ { "Ref" : "NGINXHTTPALBTargetGroup"}, { "Ref" : "NGINXHTTPSALBTargetGroup"} ]
+           }
+        },
+
+        "ProdScheduledActionScaleUp": {
+          "Type": "AWS::AutoScaling::ScheduledAction",
+          "Condition" : "IsProdEnvironment",
+          "Properties": {
+            "AutoScalingGroupName": {
+              "Ref": "NGINXInstanceASG"
+            },
+            "MaxSize": { "Ref" : "NGINXMaxInstances" },
+            "MinSize": { "Ref" : "NGINXMaxInstances" },
+            "Recurrence": "0 10 * * 1-5"
+          }
+        },
+
+        "ProdScheduledActionScaleDown": {
+          "Type": "AWS::AutoScaling::ScheduledAction",
+          "Condition" : "IsProdEnvironment",
+          "Properties": {
+            "AutoScalingGroupName": {
+              "Ref": "NGINXInstanceASG"
+            },
+            "MaxSize": { "Ref" : "NGINXMinInstances" },
+            "MinSize": { "Ref" : "NGINXMinInstances" },
+            "Recurrence": "0 23 * * *"
+          }
+        },
+ "DevScheduledActionScaleUp": {
+          "Type": "AWS::AutoScaling::ScheduledAction",
+          "Condition" : "IsDevEnvironment",
+          "Properties": {
+            "AutoScalingGroupName": {
+              "Ref": "NGINXInstanceASG"
+            },
+            "MaxSize": { "Ref" : "NGINXMaxInstances" },
+            "MinSize": { "Ref" : "NGINXMaxInstances" },
+            "Recurrence": "0 7 * * 1-5"
+          }
+        },
+
+        "DevScheduledActionScaleDown": {
+          "Type": "AWS::AutoScaling::ScheduledAction",
+          "Condition" : "IsDevEnvironment",
+          "Properties": {
+            "AutoScalingGroupName": {
+              "Ref": "NGINXInstanceASG"
+            },
+            "MaxSize": 0,
+            "MinSize": 0,
+            "Recurrence": "0 23 * * *"
+          }
+        }
+
+  },
+
+  "Outputs" : {
+        "NGINXApplicationLoadBalancerDNS": {
+            "Description" : "NGINX application loadbalancer DNS address",
+            "Value" : { "Fn::GetAtt": ["NGINXApplicationLoadBalancer", "DNSName"] }
+        }
+  }
+}
+
+
