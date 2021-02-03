@@ -82,7 +82,6 @@ Resources:
               - "Efsmonitor"
               - "Arn"
           Id: "Invokeevery5mins"
-
   PermissionForEventsToInvokeLambda:
     Type: AWS::Lambda::Permission
     Properties:
